@@ -37,24 +37,26 @@ Apple Silicon, macOS 13 or later.
 
 ## Using it
 
-The window is two pages side by side under a row of controls: what you type on
-the left, what it becomes on the right, written from the top of the sheet the
-way a letter would be.
+The window is two pages side by side: what you type on the left, what it
+becomes on the right, written from the top of the sheet the way a letter would
+be. The hand and the pen are set in the inspector on the right (View → Hide
+Inspector, ⌃⌘I, puts it away); **Write** (⌘↩) and **Export** are in the toolbar
+and the File menu.
 
 - **Type** anything. Lines longer than 75 characters wrap on word boundaries,
   blank lines become blank lines.
 - **Style** picks one of 24 named hands - Notebook, Copperplate, Spidery and so
-  on. The strip under the controls shows that hand writing the same sentence as
+  on. The strip above the pages shows that hand writing the same sentence as
   every other, so the styles can be compared - generated ahead of time and
   shipped with the app, because writing it takes about a second and nobody wants
   to wait while flipping through styles.
 - **Neatness** steadies the hand. It is the network's sampling bias: at 0.3 the
   writing wanders and scrawls, at 2.0 it writes carefully. It starts at 1.8,
   careful but still plainly handwritten.
-- **Pen** sets stroke width, and the well next to it sets the colour.
-- **Save PNG** or **Save SVG**. Both are saved with a transparent background, so
-  handwriting drops straight onto a document, and the SVG scales forever and
-  opens in Illustrator or Figma.
+- **Width** sets the pen's stroke, and **Ink** its colour.
+- **Export as PNG…** (⌘E) or **Export as SVG…** (⇧⌘E). Both are saved with a
+  transparent background, so handwriting drops straight onto a document, and
+  the SVG scales forever and opens in Illustrator or Figma.
 
 The preview draws through the same code that writes the file, so what is on
 screen is what gets saved. A line takes about a second.

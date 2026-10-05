@@ -18,7 +18,12 @@ final class Composer: ObservableObject {
     @Published private(set) var progress: Double?
     @Published private(set) var notice = ""
     @Published private(set) var status = ""
-    @Published private(set) var failure: String?
+    @Published var failure: Failure?
+
+    struct Failure {
+        var title: String
+        var message: String
+    }
 
     private var generator: Generator?
     private var job: Task<Void, Never>?
@@ -36,13 +41,11 @@ final class Composer: ObservableObject {
         } catch {
             // the usual cause is the app being moved while it was open: the
             // running copy keeps pointing at files Finder has taken away
-            failure = """
-                Handwriting could not load its model.
-
+            failure = Failure(title: "Couldn't Load the Model", message: """
                 If you just moved the app while it was open, quit it and open \
                 it again from its new place. Otherwise this copy is incomplete \
                 - download it again.
-                """
+                """)
         }
     }
 
@@ -75,7 +78,7 @@ final class Composer: ObservableObject {
         let request = Generator.Request(lines: lines, style: styleID, bias: Float(neatness),
                                         seed: UInt64.random(in: 0..<UInt64.max))
         progress = 0
-        status = "Writing..."
+        status = "Writing…"
 
         job = Task { [weak self] in
             let written = await Task.detached(priority: .userInitiated) { () -> [[SIMD3<Float>]] in
@@ -90,7 +93,8 @@ final class Composer: ObservableObject {
             let page = Drawing.page(of: written)
             self.page = page.isEmpty ? nil : page
             self.status = page.isEmpty ? "Nothing came out - try again."
-                : "\(page.strokes.count) strokes, \(written.reduce(0) { $0 + $1.count }) points"
+                : "\(page.strokes.count.formatted()) strokes, "
+                    + "\(written.reduce(0) { $0 + $1.count }.formatted()) points"
             self.progress = nil
             self.job = nil
         }
@@ -98,25 +102,44 @@ final class Composer: ObservableObject {
 
     // MARK: - saving
 
-    func savePNG() { save(name: "handwriting.png", type: .png) }
-    func saveSVG() { save(name: "handwriting.svg", type: .svg) }
+    func exportFile(_ type: UTType) -> ExportFile? {
+        page.map { ExportFile(page: $0, type: type, penWidth: penWidth, colour: inkColour) }
+    }
 
-    private func save(name: String, type: UTType) {
-        guard let page else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = name
-        panel.allowedContentTypes = [type]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            if type == .svg {
-                let svg = Export.svg(page, penWidth: penWidth, colour: inkColour)
-                try svg.write(to: url, atomically: true, encoding: .utf8)
-            } else if let data = Export.png(page, penWidth: penWidth, colour: inkColour) {
-                try data.write(to: url)
-            }
-            status = "Saved \(url.lastPathComponent)"
-        } catch {
-            failure = "Could not save: \(error.localizedDescription)"
+    func exported(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url): status = "Saved \(url.lastPathComponent)"
+        case .failure(let error as CocoaError) where error.code == .userCancelled: break
+        case .failure(let error):
+            failure = Failure(title: "Couldn't Save the Image", message: error.localizedDescription)
         }
+    }
+}
+
+struct ExportFile: FileDocument {
+    static let readableContentTypes: [UTType] = [.png, .svg]
+    let page: Drawing.Page
+    let type: UTType
+    let penWidth: CGFloat
+    let colour: NSColor
+
+    init(page: Drawing.Page, type: UTType, penWidth: CGFloat, colour: NSColor) {
+        self.page = page
+        self.type = type
+        self.penWidth = penWidth
+        self.colour = colour
+    }
+
+    init(configuration: ReadConfiguration) throws { throw CocoaError(.featureUnsupported) }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        if type == .svg {
+            return FileWrapper(regularFileWithContents:
+                Data(Export.svg(page, penWidth: penWidth, colour: colour).utf8))
+        }
+        guard let png = Export.png(page, penWidth: penWidth, colour: colour) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        return FileWrapper(regularFileWithContents: png)
     }
 }

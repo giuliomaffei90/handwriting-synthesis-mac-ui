@@ -1,57 +1,134 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var composer = Composer()
+    @SceneStorage("showsInspector") private var showsInspector = true
+    /// The format being saved while the save panel is open.
+    @State private var exportType: UTType?
 
     var body: some View {
-        VStack(spacing: 12) {
-            controls
-            hint
-            sample
+        withInspector(
+            VStack(spacing: 12) {
+                sample
 
-            // what you type and what it becomes, side by side like two pages
-            HStack(spacing: 14) {
-                editor
-                preview
+                // what you type and what it becomes, side by side like two pages
+                HStack(spacing: 14) {
+                    editor
+                    preview
+                }
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
-
-            actions
-        }
-        .padding(18)
-        .frame(minWidth: 760, minHeight: 600)
+            .padding(18)
+            .frame(minWidth: 620, minHeight: 520)
+        )
+        .navigationTitle(title)
+        .navigationSubtitle(composer.status)
+        .toolbar { toolbar }
+        .focusedSceneValue(\.windowActions, WindowActions(
+            write: composer.write, isWriting: composer.isWriting,
+            export: composer.page == nil ? nil : { exportType = $0 },
+            toggleInspector: { showsInspector.toggle() }, showsInspector: showsInspector))
+        .fileExporter(isPresented: Binding(get: { exportType != nil },
+                                           set: { if !$0 { exportType = nil } }),
+                      document: exportType.flatMap(composer.exportFile),
+                      contentType: exportType ?? .png, defaultFilename: "handwriting",
+                      onCompletion: composer.exported)
+        .transparentBackgroundMessage()
         .onAppear { composer.load() }
-        .alert("Something went wrong", isPresented: .constant(composer.failure != nil)) {
+        .alert(composer.failure?.title ?? "", isPresented: Binding(
+            get: { composer.failure != nil }, set: { if !$0 { composer.failure = nil } })) {
             Button("OK") { }
         } message: {
-            Text(composer.failure ?? "")
+            Text(composer.failure?.message ?? "")
         }
     }
 
-    private var controls: some View {
-        HStack(spacing: 22) {
-            Picker("Style", selection: $composer.styleID) {
-                ForEach(composer.styles, id: \.id) { Text($0.name).tag($0.id) }
+    /// The first words of the text, the way Notes titles a note.
+    private var title: String {
+        let first = composer.text.split(separator: "\n").first?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        if first.isEmpty { return "Untitled" }
+        return first.count > 24 ? first.prefix(24).trimmingCharacters(in: .whitespaces) + "…" : first
+    }
+
+    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        if let progress = composer.progress {
+            ToolbarItem {
+                ProgressView(value: progress)
+                    .progressViewStyle(.circular)
+                    .controlSize(.small)
             }
-            .frame(width: 190)
-            .onChange(of: composer.styleID) { _ in composer.showSample() }
-
-            LabelledSlider(title: "Neatness", value: $composer.neatness,
-                           range: 0.3...2, format: "%.2f")
-            LabelledSlider(title: "Pen", value: $composer.penWidth,
-                           range: 0.7...6, format: "%.1f")
-            ColorPicker("", selection: $composer.ink, supportsOpacity: false)
-                .labelsHidden()
-            Spacer(minLength: 0)
+            .withoutSharedBackground()
+        }
+        ToolbarItem {
+            Menu {
+                Button("PNG Image…") { exportType = .png }
+                Button("SVG Image…") { exportType = .svg }
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .help("Save the page as an image")
+            .disabled(composer.page == nil)
+        }
+        ToolbarGap()
+        ToolbarItem {
+            Button(composer.isWriting ? "Stop" : "Write") { composer.write() }
+                .prominentButton()
+                .help(composer.isWriting ? "Stop writing" : "Write the text in the chosen hand")
+        }
+        ToolbarGap()
+        ToolbarItem {
+            Button { showsInspector.toggle() } label: {
+                Label("Inspector", systemImage: "sidebar.trailing")
+            }
+            .help(showsInspector ? "Hide the inspector" : "Show the inspector")
         }
     }
 
-    private var hint: some View {
-        Text("Neatness steadies the hand: low wanders and scrawls, high writes carefully. "
-             + "Images are saved with a transparent background.")
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    /// The pen and the hand, beside the pages: a trailing inspector, or a
+    /// fixed pane where macOS 13 has no inspector.
+    @ViewBuilder private func withInspector(_ content: some View) -> some View {
+        if #available(macOS 14, *) {
+            content.inspector(isPresented: $showsInspector) {
+                options.inspectorColumnWidth(min: 240, ideal: 270, max: 360)
+            }
+        } else {
+            HStack(spacing: 0) {
+                content
+                if showsInspector {
+                    Divider()
+                    options.frame(width: 270)
+                }
+            }
+        }
+    }
+
+    private var options: some View {
+        Form {
+            Section {
+                Picker("Style", selection: $composer.styleID) {
+                    ForEach(composer.styles, id: \.id) { Text($0.name).tag($0.id) }
+                }
+                .onChange(of: composer.styleID) { _ in composer.showSample() }
+                LabeledContent("Neatness") {
+                    ValueSlider(title: "Neatness", value: $composer.neatness, range: 0.3...2,
+                                digits: 2)
+                }
+            } footer: {
+                Text("Neatness steadies the hand: low wanders and scrawls, high writes carefully.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Pen") {
+                LabeledContent("Width") {
+                    ValueSlider(title: "Width", value: $composer.penWidth, range: 0.7...6,
+                                digits: 1)
+                }
+                ColorPicker("Ink", selection: $composer.ink, supportsOpacity: false)
+            }
+        }
+        .formStyle(.grouped)
     }
 
     /// The same sentence, written in the chosen style.
@@ -95,47 +172,39 @@ struct ContentView: View {
             .background(RoundedRectangle(cornerRadius: 10).fill(.white))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
             .overlay {
-                if composer.page == nil && !composer.isWriting {
-                    Text("Your handwriting appears here")
-                        .font(.callout)
-                        .foregroundStyle(Color(white: 0.68))
-                }
+                if composer.page == nil && !composer.isWriting { emptyPage }
             }
+            // paper stays white in dark mode, so what is on it is drawn for light
+            .environment(\.colorScheme, .light)
     }
 
-    private var actions: some View {
-        HStack(spacing: 12) {
-            Button(composer.isWriting ? "Stop" : "Write") { composer.write() }
-                .keyboardShortcut(.return, modifiers: .command)
-                .buttonStyle(.borderedProminent)
-
-            if let progress = composer.progress {
-                ProgressView(value: progress).frame(width: 130)
-            }
-            Text(composer.status)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-            Button("Save PNG") { composer.savePNG() }.disabled(composer.page == nil)
-            Button("Save SVG") { composer.saveSVG() }.disabled(composer.page == nil)
+    @ViewBuilder private var emptyPage: some View {
+        if #available(macOS 14, *) {
+            ContentUnavailableView("No Handwriting Yet", systemImage: "signature",
+                                   description: Text("Press Write to see the text in the chosen hand."))
+        } else {
+            Text("Your handwriting appears here")
+                .font(.callout)
+                .foregroundStyle(Color(white: 0.68))
         }
     }
 }
 
 /// A slider that shows what it is set to.
-private struct LabelledSlider: View {
+private struct ValueSlider: View {
     let title: String
     @Binding var value: Double
     let range: ClosedRange<Double>
-    let format: String
+    let digits: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text("\(title) \(String(format: format, value))")
-                .font(.caption)
+        HStack {
+            Slider(value: $value, in: range) { Text(title) }
+                .labelsHidden()
+            Text(value.formatted(.number.precision(.fractionLength(digits))))
+                .monospacedDigit()
                 .foregroundStyle(.secondary)
-            Slider(value: $value, in: range).frame(width: 130)
+                .frame(width: 34, alignment: .trailing)
         }
     }
 }
@@ -165,5 +234,78 @@ struct PageView: View {
                 context.stroke(Path(Drawing.path(for: line)), with: .color(ink), style: stroke)
             }
         }
+    }
+}
+
+// MARK: - menu bar
+
+/// What the menu bar can do to the front window; a nil action is a disabled item.
+struct WindowActions {
+    var write: () -> Void
+    var isWriting: Bool
+    var export: ((UTType) -> Void)?
+    var toggleInspector: () -> Void
+    var showsInspector: Bool
+}
+
+extension FocusedValues {
+    @Entry var windowActions: WindowActions?
+}
+
+struct WindowCommands: Commands {
+    @FocusedValue(\.windowActions) private var actions
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button(actions?.isWriting == true ? "Stop" : "Write") { actions?.write() }
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(actions == nil)
+        }
+        CommandGroup(replacing: .importExport) {
+            Group {
+                Button("Export as PNG…") { actions?.export?(.png) }
+                    .keyboardShortcut("e")
+                Button("Export as SVG…") { actions?.export?(.svg) }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
+            .disabled(actions?.export == nil)
+        }
+        CommandGroup(after: .sidebar) {
+            Button(actions?.showsInspector == false ? "Show Inspector" : "Hide Inspector") {
+                actions?.toggleInspector()
+            }
+            .keyboardShortcut("i", modifiers: [.command, .control])
+            .disabled(actions == nil)
+        }
+    }
+}
+
+// MARK: - Liquid Glass, with plain fallbacks before macOS 26
+
+extension View {
+    /// Tinted Liquid Glass for the one primary toolbar action; a bordered prominent button before macOS 26.
+    @ViewBuilder func prominentButton() -> some View {
+        if #available(macOS 26, *) { buttonStyle(.glassProminent) } else { buttonStyle(.borderedProminent) }
+    }
+
+    /// Says in the save panel that images come without a background; macOS 13 has no message.
+    @ViewBuilder func transparentBackgroundMessage() -> some View {
+        if #available(macOS 14, *) {
+            fileDialogMessage("Images are saved with a transparent background.")
+        } else { self }
+    }
+}
+
+extension ToolbarContent {
+    /// Items without the shared glass capsule (e.g. a spinner); older systems have no capsule anyway.
+    @ToolbarContentBuilder func withoutSharedBackground() -> some ToolbarContent {
+        if #available(macOS 26, *) { sharedBackgroundVisibility(.hidden) } else { self }
+    }
+}
+
+/// A gap between toolbar groups on macOS 26; older toolbars have no glass groups to separate.
+struct ToolbarGap: ToolbarContent {
+    var body: some ToolbarContent {
+        if #available(macOS 26, *) { ToolbarSpacer(.fixed) }
     }
 }

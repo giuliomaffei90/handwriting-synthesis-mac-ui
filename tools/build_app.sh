@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="${VERSION:-2.0.3}"
+MIN_MACOS="13.0"   # also platforms: in swift/Package.swift
 APP="dist/Handwriting.app"
 
 test -f hw/weights.npz || { echo "hw/weights.npz missing - run tools/tf_export.py first"; exit 1; }
@@ -27,7 +28,11 @@ if [ ! -f swift/Resources/model.bin ] || [ "$needs_packing" = true ]; then
 fi
 
 echo "==> Building the app..."
-swift build -c release --package-path swift
+# record the real SDK in the binary: swift build stamps the deployment target
+# instead, and macOS then draws the app with that old system's look
+swift build -c release --package-path swift \
+  -Xlinker -platform_version -Xlinker macos -Xlinker "$MIN_MACOS" \
+  -Xlinker "$(xcrun --show-sdk-version)"
 
 echo "==> Assembling $APP..."
 rm -rf "$APP"
@@ -37,7 +42,7 @@ cp swift/Resources/*.bin "$APP/Contents/Resources/"
 # the Liquid Glass icon: actool turns the Icon Composer document into the
 # renditions macOS draws (Assets.car) plus an .icns for older systems
 xcrun actool assets/AppIcon.icon --compile "$APP/Contents/Resources" \
-  --platform macosx --target-device mac --minimum-deployment-target 13.0 \
+  --platform macosx --target-device mac --minimum-deployment-target "$MIN_MACOS" \
   --app-icon AppIcon --output-partial-info-plist /dev/null \
   --output-format human-readable-text >/dev/null
 
@@ -46,6 +51,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleName</key><string>Handwriting</string>
   <key>CFBundleDisplayName</key><string>Handwriting</string>
   <key>CFBundleExecutable</key><string>Handwriting</string>
@@ -55,7 +61,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
-  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>LSMinimumSystemVersion</key><string>$MIN_MACOS</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.graphics-design</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
