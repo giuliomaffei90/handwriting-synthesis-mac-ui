@@ -10,11 +10,6 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/giuliomaffei90/handwriting-synthesis?label=release"></a>
-  <img alt="macOS 13 or later on Apple Silicon" src="https://img.shields.io/badge/macOS-13%2B%20%C2%B7%20Apple%20Silicon-lightgrey">
-</p>
-
-<p align="center">
   <img src="docs/screenshot.png" width="560" alt="The Handwriting window: a short letter typed on the left, the same letter handwritten on a white page on the right, the style strip above them and the inspector with Style, Neatness, Width and Ink on the right">
 </p>
 
