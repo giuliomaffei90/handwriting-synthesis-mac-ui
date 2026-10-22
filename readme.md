@@ -74,21 +74,11 @@ Every hand, writing the sentence the style strip shows:
 
 ## Installation
 
-From a release:
-
-1. Get `Handwriting-<version>.dmg` from [Releases](../../releases).
-2. Open it and drag **Handwriting** across to **Applications** - before opening
-   it, since an app moved while it is running keeps pointing at files that are
-   no longer there.
-3. First launch only: the app is signed but not notarized by Apple, so macOS
-   asks. Right-click the app and choose **Open**, or go to
-   **System Settings → Privacy & Security** and press **Open Anyway**.
-
-From source:
+No prebuilt app is published: build it from source.
 
 ```bash
-git clone https://gitlab.com/giuliomaffei90/handwriting-synthesis.git
-cd handwriting-synthesis
+git clone https://github.com/giuliomaffei90/handwriting-synthesis-mac-ui.git
+cd handwriting-synthesis-mac-ui
 ./tools/build_app.sh          # -> dist/Handwriting.app
 open dist/Handwriting.app
 ./tools/make_dmg.sh           # -> dist/Handwriting-<version>.dmg, optional
